@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, onValue, update, set } from "firebase/database";
-import { Bus, Users, Armchair, ShieldCheck, LogOut, Navigation, Navigation as NavIcon, Activity, AlertTriangle, CheckCircle2, RefreshCw } from 'lucide-react';
+import { Bus, Users, Armchair, ShieldCheck, LogOut, Navigation, Navigation as NavIcon, Activity, RefreshCw } from 'lucide-react';
 
-// --- CONFIGURATION ---
-// 1. Ensure this URL matches your Firebase Realtime Database Tab exactly
 const FIREBASE_DB_URL = "https://smartbussystem-334b2-default-rtdb.asia-southeast1.firebasedatabase.app/"; 
 
 const app = initializeApp({ databaseURL: FIREBASE_DB_URL });
@@ -12,227 +10,179 @@ const db = getDatabase(app);
 
 export default function App() {
   const [view, setView] = useState('home'); 
-  const [busData, setBusData] = useState({ passengers: 0, seats: { seat1: 0, seat2: 0, seat3: 0 }, route: 'VIT Pune ➔ Swargate' });
+  const [busData, setBusData] = useState({ 
+    passengers: 0, 
+    seats: { seat1: 0, seat2: 0, seat3: 0 }, 
+    overrides: { seat1: false, seat2: false, seat3: false },
+    route: 'VIT Pune ➔ Swargate' 
+  });
   const [user, setUser] = useState(null);
-  const [status, setStatus] = useState('connecting'); // 'connecting', 'connected', 'error'
-  const [lastUpdate, setLastUpdate] = useState(null);
+  const [loginForm, setLoginForm] = useState({ id: '', pass: '' });
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    console.log("Connecting to Firebase at:", FIREBASE_DB_URL);
     const busRef = ref(db, 'buses/23A');
-    
-    const unsubscribe = onValue(busRef, (snapshot) => {
+    return onValue(busRef, (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.val();
-        console.log("[Firebase Data Received]:", data);
-        setStatus('connected');
-        setLastUpdate(new Date().toLocaleTimeString());
-        
-        // Robust data mapping: Ensure we handle missing folders gracefully
         setBusData({
           passengers: Number(data.passengers) || 0,
-          seats: {
-            seat1: data.seats?.seat1 !== undefined ? Number(data.seats.seat1) : 0,
-            seat2: data.seats?.seat2 !== undefined ? Number(data.seats.seat2) : 0,
-            seat3: data.seats?.seat3 !== undefined ? Number(data.seats.seat3) : 0,
-          },
+          seats: data.seats || { seat1: 0, seat2: 0, seat3: 0 },
+          overrides: data.overrides || { seat1: false, seat2: false, seat3: false },
           route: data.route || 'VIT Pune ➔ Swargate'
         });
-      } else {
-        console.warn("No data found at buses/23A.");
-        setStatus('connected'); 
       }
-    }, (error) => {
-      console.error("Firebase Read Error:", error);
-      setStatus('error');
     });
-
-    return () => unsubscribe();
   }, []);
 
-  const updateCloud = (updates) => {
-    update(ref(db, `buses/23A`), updates);
+  const handleLogin = (e) => {
+    e.preventDefault();
+    if (loginForm.id === "23A" && loginForm.pass === "1234") {
+      setUser({ id: '23A' });
+      setView('home');
+      setError('');
+    } else {
+      setError('Invalid Bus ID or Password');
+    }
   };
 
-  const resetAllData = () => {
-    if (window.confirm("Admin: Reset all bus occupancy data to zero?")) {
-      set(ref(db, `buses/23A/seats`), { seat1: 0, seat2: 0, seat3: 0 });
-      set(ref(db, `buses/23A/passengers`), 0);
-    }
+  const handleLogout = () => {
+    // CRITICAL: When logging out, we remove all overrides so sensors work normally again
+    update(ref(db, 'buses/23A/overrides'), {
+      seat1: false,
+      seat2: false,
+      seat3: false
+    });
+    setUser(null);
+  };
+
+  const toggleSeatOverride = (seatKey, currentStatus) => {
+    if (!user) return;
+    const newStatus = currentStatus === 1 ? 0 : 1;
+    
+    // Set the status and the override flag
+    // Hardware will see 'overrides/seatX = true' and stop sending sensor data
+    update(ref(db, `buses/23A`), {
+      [`seats/${seatKey}`]: newStatus,
+      [`overrides/${seatKey}`]: true
+    });
+  };
+
+  const updatePassengers = (newVal) => {
+    set(ref(db, 'buses/23A/passengers'), newVal);
   };
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
-      {/* NAVBAR */}
-      <nav className="bg-slate-900 text-white p-4 shadow-xl border-b border-white/5">
+      <nav className="bg-slate-900 text-white p-4 shadow-xl">
         <div className="max-w-5xl mx-auto flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <div className="bg-blue-600 p-2 rounded-xl">
-              <Bus className="text-white h-6 w-6" />
-            </div>
+            <Bus className="text-blue-500 h-8 w-8" />
             <span className="font-black text-xl tracking-tighter uppercase italic">Transit<span className="text-blue-500">Hub</span></span>
           </div>
-          
-          <div className="flex items-center gap-4">
-            <div className={`hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-black border transition-colors ${
-              status === 'connected' ? 'bg-green-500/10 text-green-500 border-green-500/20' : 
-              status === 'error' ? 'bg-red-500/10 text-red-500 border-red-500/20' : 
-              'bg-blue-500/10 text-blue-500 border-blue-500/20'
-            }`}>
-              <Activity size={12} className={status === 'connected' ? "animate-pulse" : ""} />
-              {status === 'connected' ? "SYSTEM ONLINE" : status === 'error' ? "LINK FAILED" : "ESTABLISHING LINK..."}
-            </div>
-
-            {user ? (
-              <div className="flex items-center gap-2">
-                 <button onClick={resetAllData} className="bg-slate-800 hover:bg-orange-600 p-2 rounded-xl transition border border-white/10" title="Reset All Data">
-                  <RefreshCw size={14} className="text-white" />
-                </button>
-                <button onClick={() => setUser(null)} className="bg-slate-800 hover:bg-red-600 px-4 py-2 rounded-xl text-[10px] font-black tracking-widest transition flex items-center gap-2 border border-white/10">
-                  <LogOut size={14} /> DISCONNECT
-                </button>
-              </div>
-            ) : (
-              <button onClick={() => setView(view === 'login' ? 'home' : 'login')} className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-xl text-[10px] font-black tracking-widest transition shadow-lg shadow-blue-500/20">
-                {view === 'login' ? 'BACK' : 'STAFF LOGIN'}
-              </button>
-            )}
-          </div>
+          {user ? (
+            <button onClick={handleLogout} className="bg-red-500 px-4 py-2 rounded-xl text-[10px] font-bold tracking-widest flex items-center gap-2 transition hover:bg-red-600">
+              <LogOut size={14} /> EXIT STAFF MODE
+            </button>
+          ) : (
+            <button onClick={() => setView('login')} className="bg-blue-600 px-4 py-2 rounded-xl text-[10px] font-bold tracking-widest transition hover:bg-blue-700">
+              STAFF LOGIN
+            </button>
+          )}
         </div>
       </nav>
 
       <main className="max-w-4xl mx-auto p-6">
         {view === 'login' ? (
-          <div className="mt-20 bg-white p-10 rounded-[2.5rem] shadow-2xl border border-slate-100 max-w-sm mx-auto text-center animate-in zoom-in-95 duration-300">
-            <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-6">
-              <ShieldCheck size={32} className="text-blue-600" />
-            </div>
-            <h2 className="text-2xl font-black mb-2">Staff Portal</h2>
-            <p className="text-slate-400 text-xs mb-8 font-medium">Authorized personnel only</p>
-            <form onSubmit={(e) => { e.preventDefault(); setUser({id: 'Admin'}); setView('home'); }} className="space-y-4 text-left">
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Conductor ID</label>
-                <input required className="w-full mt-1 p-4 bg-slate-50 rounded-2xl outline-none border-2 border-transparent focus:border-blue-500 transition-all font-bold text-sm" placeholder="e.g. C-8821" />
-              </div>
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Pin Code</label>
-                <input type="password" required className="w-full mt-1 p-4 bg-slate-50 rounded-2xl outline-none border-2 border-transparent focus:border-blue-500 transition-all font-bold text-sm" placeholder="••••" />
-              </div>
-              <button className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl hover:bg-blue-600 transition shadow-xl shadow-slate-900/10 mt-4">Establish Secure Link</button>
+          <div className="mt-20 bg-white p-10 rounded-[2.5rem] shadow-2xl max-w-sm mx-auto border border-slate-100">
+            <ShieldCheck size={48} className="mx-auto text-blue-500 mb-4" />
+            <h2 className="text-2xl font-black text-center mb-6 tracking-tight">Staff Portal</h2>
+            <form onSubmit={handleLogin} className="space-y-4">
+              <input 
+                className="w-full p-4 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-blue-500 outline-none font-bold" 
+                placeholder="Bus ID (e.g. 23A)" 
+                onChange={e => setLoginForm({...loginForm, id: e.target.value})}
+              />
+              <input 
+                type="password"
+                className="w-full p-4 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-blue-500 outline-none font-bold" 
+                placeholder="Password" 
+                onChange={e => setLoginForm({...loginForm, pass: e.target.value})}
+              />
+              {error && <p className="text-red-500 text-xs font-bold text-center">{error}</p>}
+              <button className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl hover:bg-blue-600 transition">Login</button>
+              <button type="button" onClick={() => setView('home')} className="w-full text-slate-400 font-bold text-sm">Cancel</button>
             </form>
           </div>
         ) : (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            
-            {/* CONNECTION ALERT */}
-            {status === 'error' && (
-              <div className="bg-red-50 border-2 border-red-100 p-4 rounded-3xl flex items-center gap-4 text-red-600">
-                <AlertTriangle size={24} />
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="bg-white rounded-[3rem] shadow-xl overflow-hidden border border-slate-100">
+              <div className="bg-slate-900 p-10 text-white flex justify-between items-center">
                 <div>
-                  <p className="font-black text-xs uppercase tracking-widest">Firebase Connection Error</p>
-                  <p className="text-[11px] font-medium opacity-80">Please verify the FIREBASE_DB_URL and your Database Rules.</p>
+                  <h2 className="text-5xl font-black italic tracking-tighter">BUS 23A</h2>
+                  <p className="text-blue-400 font-bold text-sm mt-2 flex items-center gap-2"><NavIcon size={14} /> {busData.route}</p>
                 </div>
-              </div>
-            )}
-
-            {/* MAIN DASHBOARD */}
-            <div className="bg-white rounded-[3rem] shadow-2xl shadow-slate-200/50 overflow-hidden border border-slate-100">
-              <div className="bg-slate-900 p-10 text-white">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <CheckCircle2 className="text-blue-500" size={16} />
-                      <span className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em]">Active Route</span>
-                    </div>
-                    <h2 className="text-5xl font-black italic tracking-tighter">BUS 23A</h2>
-                    <p className="text-slate-400 font-bold text-sm mt-2 flex items-center gap-2">
-                      <NavIcon size={14} className="text-blue-500" /> {busData.route}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Status</p>
-                    <div className="bg-blue-500 text-white px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-tighter">
-                      In Transit
-                    </div>
-                  </div>
-                </div>
+                {user && (
+                   <div className="bg-orange-500/20 text-orange-400 px-4 py-2 rounded-full text-[10px] font-black border border-orange-500/30 uppercase tracking-widest animate-pulse">
+                      Manual Override Active
+                   </div>
+                )}
               </div>
 
               <div className="p-10 grid grid-cols-1 md:grid-cols-2 gap-10">
-                {/* PASSENGERS */}
-                <div className="bg-slate-50 p-10 rounded-[2.5rem] flex flex-col items-center justify-center text-center relative group">
+                <div className="bg-slate-50 p-10 rounded-[2.5rem] flex flex-col items-center justify-center text-center">
                    <Users size={32} className="text-blue-600 mb-4" />
-                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Total Boarded</p>
+                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Boarded Passengers</p>
                    <p className="text-7xl font-black tracking-tighter">{busData.passengers}</p>
                    {user && (
-                     <div className="flex gap-4 mt-8">
-                       <button onClick={() => busData.passengers > 0 && updateCloud({ passengers: busData.passengers - 1 })} className="w-12 h-12 bg-white shadow-lg rounded-2xl font-black text-xl text-red-500 hover:bg-red-50 transition-colors border border-slate-100">-</button>
-                       <button onClick={() => updateCloud({ passengers: busData.passengers + 1 })} className="w-12 h-12 bg-white shadow-lg rounded-2xl font-black text-xl text-green-500 hover:bg-green-50 transition-colors border border-slate-100">+</button>
+                     <div className="flex gap-4 mt-6">
+                       <button onClick={() => updatePassengers(Math.max(0, busData.passengers - 1))} className="w-12 h-12 bg-white shadow rounded-2xl font-black text-xl">-</button>
+                       <button onClick={() => updatePassengers(busData.passengers + 1)} className="w-12 h-12 bg-white shadow rounded-2xl font-black text-xl">+</button>
                      </div>
                    )}
                 </div>
 
-                {/* SEAT AVAILABILITY */}
                 <div className="bg-slate-50 p-10 rounded-[2.5rem] flex flex-col items-center justify-center text-center">
                    <Armchair size={32} className="text-green-600 mb-4" />
-                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Vacant Seats</p>
-                   <div className="flex items-baseline gap-1">
-                    <p className="text-7xl font-black tracking-tighter">
-                      {3 - (busData.seats.seat1 + busData.seats.seat2 + busData.seats.seat3)}
-                    </p>
-                    <p className="text-3xl font-black text-slate-300">/3</p>
-                   </div>
+                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Vacant Seats</p>
+                   <p className="text-7xl font-black tracking-tighter">
+                     {3 - Object.values(busData.seats).filter(s => s === 1).length}
+                     <span className="text-2xl text-slate-300">/3</span>
+                   </p>
                 </div>
               </div>
 
-              {/* SEAT MAP */}
               <div className="px-10 pb-12">
-                <div className="flex items-center gap-2 mb-6">
-                  <div className="h-px flex-1 bg-slate-100"></div>
-                  <span className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">Smart Seat Layout</span>
-                  <div className="h-px flex-1 bg-slate-100"></div>
-                </div>
+                <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em] text-center mb-8 italic">Internal Cabin Layout</p>
                 <div className="grid grid-cols-3 gap-6">
                   {[1, 2, 3].map(n => {
-                    const isOccupied = busData.seats[`seat${n}`] === 1;
+                    const seatKey = `seat${n}`;
+                    const isOccupied = busData.seats[seatKey] === 1;
+                    const isOverridden = busData.overrides?.[seatKey];
+
                     return (
                       <div 
                         key={n} 
-                        onClick={() => user && updateCloud({ [`seats/seat${n}`]: isOccupied ? 0 : 1 })}
-                        className={`p-8 rounded-[2rem] flex flex-col items-center gap-4 border-4 transition-all duration-500 cursor-pointer ${
+                        onClick={() => toggleSeatOverride(seatKey, isOccupied)}
+                        className={`p-8 rounded-[2rem] flex flex-col items-center gap-4 border-4 transition-all duration-300 cursor-pointer relative ${
                           isOccupied 
-                          ? 'bg-slate-900 border-slate-900 text-white scale-105 shadow-2xl shadow-slate-900/20' 
-                          : 'bg-white border-slate-50 text-slate-200 hover:border-blue-400 hover:text-blue-500 hover:scale-105'
-                        }`}
+                          ? 'bg-slate-900 border-slate-900 text-white' 
+                          : 'bg-white border-slate-100 text-slate-200'
+                        } ${user ? 'hover:scale-105 active:scale-95' : 'cursor-default'}`}
                       >
-                        <Armchair size={36} className={isOccupied ? "text-blue-400" : "text-slate-100"} />
+                        {isOverridden && user && (
+                          <div className="absolute top-2 right-2 w-2 h-2 bg-orange-500 rounded-full shadow-lg shadow-orange-500/50"></div>
+                        )}
+                        <Armchair size={36} />
                         <div className="text-center">
-                          <span className="block text-[10px] font-black uppercase tracking-widest mb-1">Seat {n}</span>
-                          <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${isOccupied ? 'bg-blue-500/20 text-blue-400' : 'bg-slate-100 text-slate-400'}`}>
-                            {isOccupied ? 'Reserved' : 'Available'}
+                          <span className="block text-[10px] font-black uppercase tracking-widest">Seat {n}</span>
+                          <span className={`text-[9px] font-black uppercase ${isOccupied ? 'text-blue-400' : 'text-slate-300'}`}>
+                            {isOccupied ? 'Occupied' : 'Available'}
                           </span>
                         </div>
                       </div>
                     )
                   })}
-                </div>
-              </div>
-
-              {/* FOOTER STATS */}
-              <div className="bg-slate-50 p-6 flex justify-between items-center border-t border-slate-100">
-                <div className="flex items-center gap-2 text-slate-400">
-                  <Activity size={14} />
-                  <span className="text-[9px] font-black uppercase tracking-widest">Last Telemetry: {lastUpdate || 'Waiting...'}</span>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-2 h-2 rounded-full bg-slate-900"></div>
-                    <span className="text-[9px] font-black uppercase text-slate-400">Occupied</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-2 h-2 rounded-full bg-white border border-slate-200"></div>
-                    <span className="text-[9px] font-black uppercase text-slate-400">Empty</span>
-                  </div>
                 </div>
               </div>
             </div>
