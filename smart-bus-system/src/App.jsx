@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, onValue, update } from "firebase/database";
-import { Bus, Users, Armchair, ShieldCheck, LogOut, Navigation, Navigation as NavIcon } from 'lucide-react';
+import { Bus, Users, Armchair, ShieldCheck, LogOut, Navigation, Navigation as NavIcon, Activity } from 'lucide-react';
 
 // --- CONFIGURATION ---
-// IMPORTANT: Replace 'your-project-id' with your actual Firebase Project ID
+// 1. COPY THE URL FROM YOUR FIREBASE "REALTIME DATABASE" TAB
+// 2. PASTE IT HERE EXACTLY
 const FIREBASE_DB_URL = "https://smartbussystem-334b2-default-rtdb.asia-southeast1.firebasedatabase.app"; 
 
 const app = initializeApp({ databaseURL: FIREBASE_DB_URL });
@@ -14,20 +15,33 @@ export default function App() {
   const [view, setView] = useState('home'); 
   const [busData, setBusData] = useState({ passengers: 0, seats: { seat1: 0, seat2: 0, seat3: 0 }, route: 'VIT Pune ➔ Swargate' });
   const [user, setUser] = useState(null);
+  const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    // This listens to the exact same path your NodeMCU is now writing to
+    console.log("Connecting to Firebase at:", FIREBASE_DB_URL);
     const busRef = ref(db, 'buses/23A');
-    return onValue(busRef, (snapshot) => {
+    
+    // This listens to the exact same path your NodeMCU is now writing to
+    const unsubscribe = onValue(busRef, (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.val();
+        console.log("[Firebase Data Received]:", data);
+        setIsConnected(true);
+        
         setBusData({
           passengers: data.passengers || 0,
           seats: data.seats || { seat1: 0, seat2: 0, seat3: 0 },
           route: data.route || 'VIT Pune ➔ Swargate'
         });
+      } else {
+        console.warn("No data found at buses/23A. Check your Hardware paths!");
+        setIsConnected(false);
       }
+    }, (error) => {
+      console.error("Firebase Read Error:", error);
     });
+
+    return () => unsubscribe();
   }, []);
 
   const updateCloud = (updates) => {
@@ -43,15 +57,21 @@ export default function App() {
             <Bus className="text-blue-500 h-8 w-8" />
             <span className="font-black text-xl tracking-tighter uppercase italic">Transit<span className="text-blue-500">Hub</span></span>
           </div>
-          {user ? (
-            <button onClick={() => setUser(null)} className="bg-red-500 hover:bg-red-600 px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2">
-              <LogOut size={16} /> LOGOUT
-            </button>
-          ) : (
-            <button onClick={() => setView(view === 'login' ? 'home' : 'login')} className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-xl text-xs font-bold transition">
-              {view === 'login' ? 'BACK' : 'STAFF LOGIN'}
-            </button>
-          )}
+          <div className="flex items-center gap-4">
+            <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold border ${isConnected ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}>
+              <Activity size={12} className={isConnected ? "animate-pulse" : ""} />
+              {isConnected ? "CLOUD CONNECTED" : "OFFLINE"}
+            </div>
+            {user ? (
+              <button onClick={() => setUser(null)} className="bg-red-500 hover:bg-red-600 px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2">
+                <LogOut size={16} /> LOGOUT
+              </button>
+            ) : (
+              <button onClick={() => setView(view === 'login' ? 'home' : 'login')} className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-xl text-xs font-bold transition">
+                {view === 'login' ? 'BACK' : 'STAFF LOGIN'}
+              </button>
+            )}
+          </div>
         </div>
       </nav>
 
@@ -81,6 +101,12 @@ export default function App() {
                   Live Telemetry
                 </div>
               </div>
+
+              {!isConnected && (
+                <div className="p-4 bg-orange-50 border-b border-orange-100 text-orange-600 text-[10px] font-bold text-center uppercase tracking-widest">
+                  Waiting for data from Hardware... Check your Firebase URL in App.jsx
+                </div>
+              )}
 
               <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
                 {/* PASSENGERS */}
