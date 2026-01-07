@@ -9,7 +9,7 @@ import {
 
 // --- CONFIGURATION ---
 // IMPORTANT: Paste your Firebase URL here
-const FIREBASE_DB_URL = "https://YOUR_PROJECT_ID.firebasedatabase.app"; 
+const FIREBASE_DB_URL = "https://smartbussystem-334b2-default-rtdb.asia-southeast1.firebasedatabase.app"; 
 
 const app = initializeApp({ databaseURL: FIREBASE_DB_URL });
 const db = getDatabase(app);
@@ -328,4 +328,4 @@ function Seat({ id, status }) {
       </div>
     </div>
   );
-}
+} 
