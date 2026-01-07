@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from "firebase/app";
-import { getDatabase, ref, onValue, update } from "firebase/database";
-import { Bus, Users, Armchair, ShieldCheck, LogOut, Navigation, Navigation as NavIcon, Activity, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { getDatabase, ref, onValue, update, set } from "firebase/database";
+import { Bus, Users, Armchair, ShieldCheck, LogOut, Navigation, Navigation as NavIcon, Activity, AlertTriangle, CheckCircle2, RefreshCw } from 'lucide-react';
 
 // --- CONFIGURATION ---
-// 1. COPY THE URL FROM YOUR FIREBASE "REALTIME DATABASE" TAB
-// 2. PASTE IT HERE EXACTLY (e.g., https://my-project-default-rtdb.firebaseio.com)
+// 1. Ensure this URL matches your Firebase Realtime Database Tab exactly
 const FIREBASE_DB_URL = "https://smartbussystem-334b2-default-rtdb.asia-southeast1.firebasedatabase.app/"; 
 
 const app = initializeApp({ databaseURL: FIREBASE_DB_URL });
@@ -29,14 +28,19 @@ export default function App() {
         setStatus('connected');
         setLastUpdate(new Date().toLocaleTimeString());
         
+        // Robust data mapping: Ensure we handle missing folders gracefully
         setBusData({
-          passengers: data.passengers || 0,
-          seats: data.seats || { seat1: 0, seat2: 0, seat3: 0 },
+          passengers: Number(data.passengers) || 0,
+          seats: {
+            seat1: data.seats?.seat1 !== undefined ? Number(data.seats.seat1) : 0,
+            seat2: data.seats?.seat2 !== undefined ? Number(data.seats.seat2) : 0,
+            seat3: data.seats?.seat3 !== undefined ? Number(data.seats.seat3) : 0,
+          },
           route: data.route || 'VIT Pune ➔ Swargate'
         });
       } else {
-        console.warn("No data found at buses/23A. Database is empty or path is wrong.");
-        setStatus('connected'); // Connected but empty
+        console.warn("No data found at buses/23A.");
+        setStatus('connected'); 
       }
     }, (error) => {
       console.error("Firebase Read Error:", error);
@@ -48,6 +52,13 @@ export default function App() {
 
   const updateCloud = (updates) => {
     update(ref(db, `buses/23A`), updates);
+  };
+
+  const resetAllData = () => {
+    if (window.confirm("Admin: Reset all bus occupancy data to zero?")) {
+      set(ref(db, `buses/23A/seats`), { seat1: 0, seat2: 0, seat3: 0 });
+      set(ref(db, `buses/23A/passengers`), 0);
+    }
   };
 
   return (
@@ -73,9 +84,14 @@ export default function App() {
             </div>
 
             {user ? (
-              <button onClick={() => setUser(null)} className="bg-slate-800 hover:bg-red-600 px-4 py-2 rounded-xl text-[10px] font-black tracking-widest transition flex items-center gap-2 border border-white/10">
-                <LogOut size={14} /> DISCONNECT
-              </button>
+              <div className="flex items-center gap-2">
+                 <button onClick={resetAllData} className="bg-slate-800 hover:bg-orange-600 p-2 rounded-xl transition border border-white/10" title="Reset All Data">
+                  <RefreshCw size={14} className="text-white" />
+                </button>
+                <button onClick={() => setUser(null)} className="bg-slate-800 hover:bg-red-600 px-4 py-2 rounded-xl text-[10px] font-black tracking-widest transition flex items-center gap-2 border border-white/10">
+                  <LogOut size={14} /> DISCONNECT
+                </button>
+              </div>
             ) : (
               <button onClick={() => setView(view === 'login' ? 'home' : 'login')} className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-xl text-[10px] font-black tracking-widest transition shadow-lg shadow-blue-500/20">
                 {view === 'login' ? 'BACK' : 'STAFF LOGIN'}
@@ -114,7 +130,7 @@ export default function App() {
                 <AlertTriangle size={24} />
                 <div>
                   <p className="font-black text-xs uppercase tracking-widest">Firebase Connection Error</p>
-                  <p className="text-[11px] font-medium opacity-80">Please verify the FIREBASE_DB_URL in App.jsx and your Database Rules.</p>
+                  <p className="text-[11px] font-medium opacity-80">Please verify the FIREBASE_DB_URL and your Database Rules.</p>
                 </div>
               </div>
             )}
