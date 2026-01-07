@@ -6,7 +6,7 @@ import { Bus, Users, Armchair, ShieldCheck, LogOut, Navigation, Navigation as Na
 // --- CONFIGURATION ---
 // 1. COPY THE URL FROM YOUR FIREBASE "REALTIME DATABASE" TAB
 // 2. PASTE IT HERE EXACTLY
-const FIREBASE_DB_URL = "https://smartbussystem-334b2-default-rtdb.asia-southeast1.firebasedatabase.app"; 
+const FIREBASE_DB_URL = "https://console.firebase.google.com/u/1/project/smartbussystem-334b2/database/smartbussystem-334b2-default-rtdb/data/~2F"; 
 
 const app = initializeApp({ databaseURL: FIREBASE_DB_URL });
 const db = getDatabase(app);
