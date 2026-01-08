@@ -1,24 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, onValue, update, set } from "firebase/database";
-import { Bus, Users, Armchair, ShieldCheck, LogOut, Navigation, Navigation as NavIcon, Activity, RefreshCw } from 'lucide-react';
+import { Bus, Users, Armchair, ShieldCheck, LogOut, Navigation, Activity, Lock, Unlock } from 'lucide-react';
 
-const FIREBASE_DB_URL = "https://smartbussystem-334b2-default-rtdb.asia-southeast1.firebasedatabase.app/"; 
+// --- CONFIGURATION ---
+const FIREBASE_DB_URL = "https://smartbussystem-334b2-default-rtdb.asia-southeast1.firebasedatabase.app/"; // REPLACE ME
 
 const app = initializeApp({ databaseURL: FIREBASE_DB_URL });
 const db = getDatabase(app);
 
 export default function App() {
   const [view, setView] = useState('home'); 
-  const [busData, setBusData] = useState({ 
-    passengers: 0, 
-    seats: { seat1: 0, seat2: 0, seat3: 0 }, 
-    overrides: { seat1: false, seat2: false, seat3: false },
-    route: 'VIT Pune ➔ Swargate' 
-  });
   const [user, setUser] = useState(null);
   const [loginForm, setLoginForm] = useState({ id: '', pass: '' });
   const [error, setError] = useState('');
+  const [busData, setBusData] = useState({ 
+    passengers: 0, 
+    seats: { seat1: 0, seat2: 0, seat3: 0 }, 
+    overrides: { seat1: false, seat2: false, seat3: false }
+  });
 
   useEffect(() => {
     const busRef = ref(db, 'buses/23A');
@@ -26,10 +26,9 @@ export default function App() {
       if (snapshot.exists()) {
         const data = snapshot.val();
         setBusData({
-          passengers: Number(data.passengers) || 0,
+          passengers: data.passengers || 0,
           seats: data.seats || { seat1: 0, seat2: 0, seat3: 0 },
-          overrides: data.overrides || { seat1: false, seat2: false, seat3: false },
-          route: data.route || 'VIT Pune ➔ Swargate'
+          overrides: data.overrides || { seat1: false, seat2: false, seat3: false }
         });
       }
     });
@@ -42,144 +41,96 @@ export default function App() {
       setView('home');
       setError('');
     } else {
-      setError('Invalid Bus ID or Password');
+      setError('Incorrect Credentials');
     }
   };
 
-  const handleLogout = () => {
-    // CRITICAL: When logging out, we remove all overrides so sensors work normally again
-    update(ref(db, 'buses/23A/overrides'), {
-      seat1: false,
-      seat2: false,
-      seat3: false
-    });
+  const logout = () => {
+    // Release all overrides so sensors take back control
+    update(ref(db, 'buses/23A/overrides'), { seat1: false, seat2: false, seat3: false });
     setUser(null);
   };
 
-  const toggleSeatOverride = (seatKey, currentStatus) => {
+  const toggleSeat = (seatKey, currentVal) => {
     if (!user) return;
-    const newStatus = currentStatus === 1 ? 0 : 1;
-    
-    // Set the status and the override flag
-    // Hardware will see 'overrides/seatX = true' and stop sending sensor data
-    update(ref(db, `buses/23A`), {
-      [`seats/${seatKey}`]: newStatus,
-      [`overrides/${seatKey}`]: true
+    const newVal = currentVal === 1 ? 0 : 1;
+    update(ref(db, 'buses/23A'), {
+      [`seats/${seatKey}`]: newVal,
+      [`overrides/${seatKey}`]: true // Lock this seat so hardware can't change it
     });
   };
 
-  const updatePassengers = (newVal) => {
-    set(ref(db, 'buses/23A/passengers'), newVal);
+  const adjustPpl = (delta) => {
+    const next = Math.max(0, busData.passengers + delta);
+    set(ref(db, 'buses/23A/passengers'), next);
   };
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
-      <nav className="bg-slate-900 text-white p-4 shadow-xl">
-        <div className="max-w-5xl mx-auto flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <Bus className="text-blue-500 h-8 w-8" />
-            <span className="font-black text-xl tracking-tighter uppercase italic">Transit<span className="text-blue-500">Hub</span></span>
-          </div>
-          {user ? (
-            <button onClick={handleLogout} className="bg-red-500 px-4 py-2 rounded-xl text-[10px] font-bold tracking-widest flex items-center gap-2 transition hover:bg-red-600">
-              <LogOut size={14} /> EXIT STAFF MODE
-            </button>
-          ) : (
-            <button onClick={() => setView('login')} className="bg-blue-600 px-4 py-2 rounded-xl text-[10px] font-bold tracking-widest transition hover:bg-blue-700">
-              STAFF LOGIN
-            </button>
-          )}
+      <nav className="bg-slate-900 text-white p-4 shadow-xl flex justify-between items-center">
+        <div className="flex items-center gap-2">
+          <Bus className="text-blue-500" />
+          <span className="font-black italic uppercase">TransitHub</span>
         </div>
+        {user ? (
+          <button onClick={logout} className="bg-red-500 px-3 py-1.5 rounded-lg text-[10px] font-bold">LOGOUT STAFF</button>
+        ) : (
+          <button onClick={() => setView('login')} className="bg-blue-600 px-3 py-1.5 rounded-lg text-[10px] font-bold">STAFF LOGIN</button>
+        )}
       </nav>
 
-      <main className="max-w-4xl mx-auto p-6">
+      <main className="max-w-md mx-auto p-4">
         {view === 'login' ? (
-          <div className="mt-20 bg-white p-10 rounded-[2.5rem] shadow-2xl max-w-sm mx-auto border border-slate-100">
-            <ShieldCheck size={48} className="mx-auto text-blue-500 mb-4" />
-            <h2 className="text-2xl font-black text-center mb-6 tracking-tight">Staff Portal</h2>
-            <form onSubmit={handleLogin} className="space-y-4">
-              <input 
-                className="w-full p-4 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-blue-500 outline-none font-bold" 
-                placeholder="Bus ID (e.g. 23A)" 
-                onChange={e => setLoginForm({...loginForm, id: e.target.value})}
-              />
-              <input 
-                type="password"
-                className="w-full p-4 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-blue-500 outline-none font-bold" 
-                placeholder="Password" 
-                onChange={e => setLoginForm({...loginForm, pass: e.target.value})}
-              />
-              {error && <p className="text-red-500 text-xs font-bold text-center">{error}</p>}
-              <button className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl hover:bg-blue-600 transition">Login</button>
-              <button type="button" onClick={() => setView('home')} className="w-full text-slate-400 font-bold text-sm">Cancel</button>
-            </form>
-          </div>
+          <form onSubmit={handleLogin} className="mt-20 bg-white p-8 rounded-3xl shadow-xl space-y-4">
+            <h2 className="text-xl font-black text-center">Staff Access</h2>
+            <input className="w-full p-3 bg-slate-100 rounded-xl outline-none" placeholder="Bus ID (23A)" onChange={e=>setLoginForm({...loginForm, id:e.target.value})} />
+            <input type="password" className="w-full p-3 bg-slate-100 rounded-xl outline-none" placeholder="Password" onChange={e=>setLoginForm({...loginForm, pass:e.target.value})} />
+            {error && <p className="text-red-500 text-center text-xs font-bold">{error}</p>}
+            <button className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold">Verify & Connect</button>
+            <button type="button" onClick={()=>setView('home')} className="w-full text-slate-400 text-sm">Cancel</button>
+          </form>
         ) : (
-          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="bg-white rounded-[3rem] shadow-xl overflow-hidden border border-slate-100">
-              <div className="bg-slate-900 p-10 text-white flex justify-between items-center">
-                <div>
-                  <h2 className="text-5xl font-black italic tracking-tighter">BUS 23A</h2>
-                  <p className="text-blue-400 font-bold text-sm mt-2 flex items-center gap-2"><NavIcon size={14} /> {busData.route}</p>
-                </div>
-                {user && (
-                   <div className="bg-orange-500/20 text-orange-400 px-4 py-2 rounded-full text-[10px] font-black border border-orange-500/30 uppercase tracking-widest animate-pulse">
-                      Manual Override Active
-                   </div>
-                )}
+          <div className="space-y-6">
+            <div className="bg-white rounded-[2rem] shadow-xl overflow-hidden border border-slate-100">
+              <div className="bg-slate-900 p-6 text-white">
+                <h1 className="text-3xl font-black italic">ROUTE 23A</h1>
+                <p className="text-blue-400 text-xs font-bold uppercase tracking-widest mt-1">VIT Pune ➔ Swargate</p>
               </div>
 
-              <div className="p-10 grid grid-cols-1 md:grid-cols-2 gap-10">
-                <div className="bg-slate-50 p-10 rounded-[2.5rem] flex flex-col items-center justify-center text-center">
-                   <Users size={32} className="text-blue-600 mb-4" />
-                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Boarded Passengers</p>
-                   <p className="text-7xl font-black tracking-tighter">{busData.passengers}</p>
-                   {user && (
-                     <div className="flex gap-4 mt-6">
-                       <button onClick={() => updatePassengers(Math.max(0, busData.passengers - 1))} className="w-12 h-12 bg-white shadow rounded-2xl font-black text-xl">-</button>
-                       <button onClick={() => updatePassengers(busData.passengers + 1)} className="w-12 h-12 bg-white shadow rounded-2xl font-black text-xl">+</button>
-                     </div>
-                   )}
+              <div className="p-6 grid grid-cols-2 gap-4">
+                <div className="bg-slate-50 p-6 rounded-2xl text-center">
+                  <Users size={24} className="mx-auto text-blue-600 mb-2" />
+                  <p className="text-[10px] font-bold text-slate-400 uppercase">Passengers</p>
+                  <p className="text-4xl font-black">{busData.passengers}</p>
+                  {user && (
+                    <div className="flex gap-2 justify-center mt-3">
+                      <button onClick={()=>adjustPpl(-1)} className="w-8 h-8 bg-white border rounded-lg font-bold shadow-sm">-</button>
+                      <button onClick={()=>adjustPpl(1)} className="w-8 h-8 bg-white border rounded-lg font-bold shadow-sm">+</button>
+                    </div>
+                  )}
                 </div>
-
-                <div className="bg-slate-50 p-10 rounded-[2.5rem] flex flex-col items-center justify-center text-center">
-                   <Armchair size={32} className="text-green-600 mb-4" />
-                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Vacant Seats</p>
-                   <p className="text-7xl font-black tracking-tighter">
-                     {3 - Object.values(busData.seats).filter(s => s === 1).length}
-                     <span className="text-2xl text-slate-300">/3</span>
-                   </p>
+                <div className="bg-slate-50 p-6 rounded-2xl text-center">
+                  <Armchair size={24} className="mx-auto text-green-600 mb-2" />
+                  <p className="text-[10px] font-bold text-slate-400 uppercase">Available</p>
+                  <p className="text-4xl font-black">{3 - Object.values(busData.seats).filter(s=>s===1).length}<span className="text-sm text-slate-300">/3</span></p>
                 </div>
               </div>
 
-              <div className="px-10 pb-12">
-                <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em] text-center mb-8 italic">Internal Cabin Layout</p>
-                <div className="grid grid-cols-3 gap-6">
+              <div className="px-6 pb-8">
+                <div className="grid grid-cols-3 gap-3">
                   {[1, 2, 3].map(n => {
-                    const seatKey = `seat${n}`;
-                    const isOccupied = busData.seats[seatKey] === 1;
-                    const isOverridden = busData.overrides?.[seatKey];
-
+                    const key = `seat${n}`;
+                    const active = busData.seats[key] === 1;
+                    const overridden = busData.overrides[key];
                     return (
                       <div 
                         key={n} 
-                        onClick={() => toggleSeatOverride(seatKey, isOccupied)}
-                        className={`p-8 rounded-[2rem] flex flex-col items-center gap-4 border-4 transition-all duration-300 cursor-pointer relative ${
-                          isOccupied 
-                          ? 'bg-slate-900 border-slate-900 text-white' 
-                          : 'bg-white border-slate-100 text-slate-200'
-                        } ${user ? 'hover:scale-105 active:scale-95' : 'cursor-default'}`}
+                        onClick={() => toggleSeat(key, busData.seats[key])}
+                        className={`p-4 rounded-2xl border-2 flex flex-col items-center gap-2 transition-all relative ${active ? 'bg-slate-900 border-slate-900 text-white' : 'bg-white border-slate-100 text-slate-200'} ${user ? 'cursor-pointer' : 'cursor-default'}`}
                       >
-                        {isOverridden && user && (
-                          <div className="absolute top-2 right-2 w-2 h-2 bg-orange-500 rounded-full shadow-lg shadow-orange-500/50"></div>
-                        )}
-                        <Armchair size={36} />
-                        <div className="text-center">
-                          <span className="block text-[10px] font-black uppercase tracking-widest">Seat {n}</span>
-                          <span className={`text-[9px] font-black uppercase ${isOccupied ? 'text-blue-400' : 'text-slate-300'}`}>
-                            {isOccupied ? 'Occupied' : 'Available'}
-                          </span>
-                        </div>
+                        {user && overridden && <div className="absolute top-1 right-1 w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>}
+                        <Armchair size={24} />
+                        <span className="text-[8px] font-black uppercase tracking-widest">Seat {n}</span>
                       </div>
                     )
                   })}
